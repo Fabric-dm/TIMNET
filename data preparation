@@ -1,0 +1,75 @@
+import pandas as pd
+# 加载TSV文件的2.2亿数据
+file_path = 'E:\MYSQL\opensource_dataset.tsv'
+chunk_size = 220000000
+data = pd.read_csv(file_path, sep='\t', nrows=chunk_size)
+print(data)
+print(data['i'].dtypes) 
+
+# 使用3sigma方法剔除异常值
+def remove_outliers(df, column):
+    mean = df[column].mean()
+    std = df[column].std()
+    df = df[(df[column] >= mean - 3 * std) & (df[column] <= mean + 3 * std)]
+    return df
+data = remove_outliers(data, 'i')
+# 剔除其他列的异常值
+columns_to_check = ['t_history', 'r_history', 'delta_t', 'r']
+for column in columns_to_check:
+    data = remove_outliers(data, column)
+# 删除缺失值
+data.dropna(inplace=True)
+
+# 统计数据集中出现的所有单词
+unique_words = data['w'].unique()
+# 创建新的数据框来存储单词及其出现次数
+word_counts = pd.DataFrame({'word': unique_words})
+# 统计每个单词在原始数据集中的出现次数
+word_counts['word_count'] = word_counts['word'].apply(lambda x: data[data['w'] == x].shape[0])
+print(word_counts)
+# 计算每个单词在原始数据集中所有人的总复习次数
+word_counts['total_review_counts'] = word_counts['word'].apply(lambda x: data[data['w'] == x]['i'].sum())
+print(word_counts)
+# 创建新列并计算第一列单词的长度
+word_counts['word_length'] = word_counts['word'].apply(len)
+print(word_counts)
+# 输出100行到110行的数据
+print(data.iloc[111:211])
+# 定义函数来找到与给定单词形近的单词数量
+def find_similar_words(word_counts, word):
+    similar_count_1 = 0 
+    similar_count_2 = 0  
+    
+    for other_word in word_counts['word']:
+        # 计算两个单词之间的字母差异
+        diff_count = sum(a != b for a, b in zip(word, other_word))
+        # 根据字母差异的数量进行计数
+        if diff_count == 1:
+            similar_count_1 += 1
+        elif diff_count == 2:
+            similar_count_2 += 1  
+    return similar_count_1, similar_count_2
+# 创建新列，用于存储相似单词的数量
+word_counts['similar_count_1'] = word_counts['word'].apply(lambda x: find_similar_words(word_counts, x)[0])
+word_counts['similar_count_2'] = word_counts['word'].apply(lambda x: find_similar_words(word_counts, x)[1])
+print(word_counts)
+#加载难度系数
+file_path_1= 'E:\MYSQL\opensource_dataset_difficulty.tsv'
+diff = pd.read_csv(file_path_1, delimiter='\t')
+# 定义计算单词长度的函数
+def calculate_word_length(word):
+    return len(str(word))
+# 应用函数并创建新列
+diff['word_length'] = diff['w'].apply(calculate_word_length)
+# 显示新的 DataFrame
+print(diff)
+def calculate_similar_words(word1, word2):
+    if isinstance(word1, str) and isinstance(word2, str) and len(word1) == len(word2):
+        diff_count = sum(1 for c1, c2 in zip(word1, word2) if c1 != c2)
+        return diff_count <= 2
+    return False
+def count_similar_words(word, words):
+    similar_count = sum(1 for w in words if calculate_similar_words(word, w))
+    return similar_count
+diff['similar_word_count'] = diff['w'].apply(lambda x: count_similar_words(x, diff['w']))
+print(diff)
