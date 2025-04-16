@@ -1,0 +1,261 @@
+import time
+import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn import metrics
+import plotly.express as px
+import joblib
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.preprocessing import MinMaxScaler
+
+plt.style.use('seaborn-whitegrid')
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+plt.rcParams['figure.figsize'] = (8.0, 6.0)
+plt.rcParams['figure.dpi'] = 300
+def fit_recall_halflife(raw):
+    print('fit_recall_halflife_dhp')
+    raw['log_hinc'] = raw['halflife_increase'].map(lambda x: np.log(x - 1))
+    raw['log_h'] = raw['last_halflife'].map(lambda x: np.log(x))
+    raw['fi'] = raw['last_p_recall'].map(lambda x: 1 - x)
+    raw['log_fi'] = raw['last_p_recall'].map(lambda x: np.log(1 - x))
+    raw['log_d'] = raw['d'].map(lambda x: np.log(x))
+    raw['log_delta_h'] = np.log(raw['halflife'] - raw['last_halflife'])
+    corr = raw.corr()
+    print(corr)
+    X = raw[['log_d', 'log_h', 'log_fi']]
+    Y = raw[['log_hinc']]
+
+    lr = LinearRegression()
+    lr.fit(X, Y, sample_weight=raw['group_cnt'])
+    print('Intercept: ', lr.intercept_)
+    print('Slope: ', lr.coef_)
+
+    y_pred = (np.exp(lr.predict(X)) + 1) * raw[['last_halflife']].values
+    Y = (np.exp(Y) + 1) * raw[['last_halflife']].values
+
+    print("Explained Variance Score: ",
+          metrics.explained_variance_score(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Absolute Error:',
+          metrics.mean_absolute_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Squared Error:',
+          metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Root Mean Squared Error:',
+          np.sqrt(metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    print('Mean Absolute Percentage Error:',
+          np.sqrt(metrics.mean_absolute_percentage_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+
+    raw['predict_halflife_dhp'] = y_pred
+
+    print('fit_recall_halflife_hlr')
+    lr = joblib.load('fit_result/clf.pkl')
+    X = raw[['right', 'wrong', 'd']]
+    Y = raw[['log_halflife']]
+    print('Intercept: ', lr.intercept_)
+    print('Slope: ', lr.coef_)
+
+    y_pred = np.exp(lr.predict(X))
+    Y = np.exp(Y)
+
+    print("Explained Variance Score: ",
+          metrics.explained_variance_score(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Absolute Error:',
+          metrics.mean_absolute_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Squared Error:',
+          metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Root Mean Squared Error:',
+          np.sqrt(metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    print('Mean Absolute Percentage Error:',
+          np.sqrt(metrics.mean_absolute_percentage_error(Y,y_pred, sample_weight=raw['group_cnt'])))
+
+    raw['predict_halflife_hlr'] = y_pred
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=raw['halflife'],y=raw['predict_halflife_dhp'], marker_size=np.log(raw['group_cnt']),
+                   mode='markers',
+                   name='DHP'))
+    fig.add_trace(
+        go.Scatter(x=raw['halflife'],y=raw['predict_halflife_hlr'], marker_size=np.log(raw['group_cnt']),
+                   mode='markers',
+                   name='HLR', opacity=0.7))
+    fig.update_xaxes(title_text='observed half-life after recall', title_font=dict(size=18), tickfont=dict(size=14))
+    fig.update_yaxes(title_text='predicted half-life after recall', title_font=dict(size=18), tickfont=dict(size=14))
+    fig.update_layout(legend_font_size=14, margin_t=10)
+    fig.show()
+
+
+def fit_forget_halflife(raw):
+    print('fit_forget_halflife_dhp')
+    raw['log_h'] = raw['last_halflife'].map(lambda x: np.log(x))
+    raw['fi'] = raw['last_p_recall'].map(lambda x: 1 - x)
+    raw['log_fi'] = raw['last_p_recall'].map(lambda x: np.log(1 - x))
+    raw['log_d'] = raw['d'].map(lambda x: np.log(x))
+    print(raw.corr())
+    X = raw[['log_d', 'log_h', 'log_fi']]
+    Y = raw[['log_halflife']]
+
+    lr = LinearRegression()
+    lr.fit(X, Y, sample_weight=raw['group_cnt'])
+    print('Intercept: ', lr.intercept_)
+    print('Slope: ', lr.coef_)
+
+    y_pred = np.exp(lr.predict(X))
+    Y = np.exp(Y)
+
+    print("Explained Variance Score: ",
+          metrics.explained_variance_score(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Absolute Error:',
+          metrics.mean_absolute_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Squared Error:',
+          metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Root Mean Squared Error:',
+          np.sqrt(metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    print('Mean Absolute Percentage Error:',
+          np.sqrt(metrics.mean_absolute_percentage_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    raw['predict_halflife_dhp'] = y_pred
+    print('fit_forget_halflife_hlr')
+    lr = joblib.load('fit_result/clf.pkl')
+    X = raw[['right', 'wrong', 'd']]
+    Y = raw[['log_halflife']]
+    print('Intercept: ', lr.intercept_)
+    print('Slope: ', lr.coef_)
+    y_pred = np.exp(lr.predict(X))
+    Y = np.exp(Y)
+    print("Explained Variance Score: ",
+          metrics.explained_variance_score(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Absolute Error:',
+          metrics.mean_absolute_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Squared Error:',
+          metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Root Mean Squared Error:',
+          np.sqrt(metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    print('Mean Absolute Percentage Error:',
+          np.sqrt(metrics.mean_absolute_percentage_error(Y,y_pred, sample_weight=raw['group_cnt'])))
+
+    raw['predict_halflife_hlr'] = y_pred
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(x=raw['halflife'],y=raw['predict_halflife_dhp'], marker_size=np.log(raw['group_cnt']),
+                   mode='markers',
+                   name='DHP'))
+    fig.add_trace(
+        go.Scatter(x=raw['halflife'],y=raw['predict_halflife_hlr'], marker_size=np.log(raw['group_cnt']),
+                   mode='markers',
+                   name='HLR', opacity=0.7))
+    fig.update_xaxes(title_text='observed half-life after forget', title_font=dict(size=18), tickfont=dict(size=14))
+    fig.update_yaxes(title_text='predicted half-life after forget', title_font=dict(size=18), tickfont=dict(size=14))
+    fig.update_layout(legend_font_size=14, margin_t=10)
+    fig.show()
+
+
+def fit_hlr_model(raw):
+    print('hlr_model_fitting')
+    corr = raw.corr()
+    print(corr)
+    X = raw[['right', 'wrong', 'd']]
+    Y = raw[['log_halflife']]
+    lr = LinearRegression()
+    lr.fit(X, Y, sample_weight=raw['group_cnt'])
+    print('Intercept: ', lr.intercept_)
+    print('Slope: ', lr.coef_)
+    joblib.dump(lr, 'fit_result/clf.pkl')
+    y_pred = np.exp(lr.predict(X))
+    Y = np.exp(Y)
+    print("Explained Variance Score: ",
+          metrics.explained_variance_score(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Absolute Error:',
+          metrics.mean_absolute_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Mean Squared Error:',
+          metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt']))
+    print('Root Mean Squared Error:',
+          np.sqrt(metrics.mean_squared_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    print('Mean Absolute Percentage Error:',
+          np.sqrt(metrics.mean_absolute_percentage_error(Y, y_pred, sample_weight=raw['group_cnt'])))
+    raw['predict_halflife'] = y_pred
+    fig = px.scatter(raw, x='halflife', y='predict_halflife', size='group_cnt')
+    fig.update_xaxes(title_font=dict(size=18), tickfont=dict(size=14))
+    fig.update_yaxes(title_font=dict(size=18), tickfont=dict(size=14))
+    fig.show()
+
+def lstm_model(raw):
+    # Data preprocessing
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaled_data = scaler.fit_transform(raw[['log_halflife']])
+    # Split data into training and testing sets
+    train_size = int(len(scaled_data) * 0.8)
+    test_size = len(scaled_data) - train_size
+    train_data, test_data = scaled_data[0:train_size, :], scaled_data[train_size:len(scaled_data), :]
+    # Convert an array of values into a dataset matrix
+    def create_dataset(dataset, time_step=1):
+        dataX, dataY = [], []
+        for i in range(len(dataset) - time_step - 1):
+            a = dataset[i:(i + time_step), 0]
+            dataX.append(a)
+            dataY.append(dataset[i + time_step, 0])
+        return np.array(dataX), np.array(dataY)
+
+    time_step = 100
+    X_train, y_train = create_dataset(train_data, time_step)
+    X_test, y_test = create_dataset(test_data, time_step)
+
+    # Reshape input to be [samples, time steps, features] for LSTM model
+    X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+    X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+    # Build LSTM model
+    model = Sequential()
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(time_step, 1)))
+    model.add(LSTM(units=50, return_sequences=False))
+    model.add(Dense(units=1))
+    model.compile(optimizer='adam', loss='mean_squared_error')
+
+    # Train the model
+    model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100, batch_size=64, verbose=1)
+
+    # Make predictions
+    train_predict = model.predict(X_train)
+    test_predict = model.predict(X_test)
+
+    # Invert predictions to original scale
+    train_predict = scaler.inverse_transform(train_predict)
+    y_train = scaler.inverse_transform([y_train])
+    test_predict = scaler.inverse_transform(test_predict)
+    y_test = scaler.inverse_transform([y_test])
+
+    # Evaluate the model
+    print('Train Mean Absolute Error:', metrics.mean_absolute_error(y_train[0], train_predict[:, 0]))
+    print('Train Root Mean Squared Error:', np.sqrt(metrics.mean_squared_error(y_train[0], train_predict[:, 0])))
+    print('Test Mean Absolute Error:', metrics.mean_absolute_error(y_test[0], test_predict[:, 0]))
+    print('Test Root Mean Squared Error:', np.sqrt(metrics.mean_squared_error(y_test[0], test_predict[:, 0])))
+    # Plotting
+    train_plot = np.empty_like(scaled_data)
+    train_plot[:, :] = np.nan
+    train_plot[time_step:len(train_predict) + time_step, :] = train_predict
+    test_plot = np.empty_like(scaled_data)
+    test_plot[:, :] = np.nan
+    test_plot[len(train_predict) + (time_step * 2) + 1:len(scaled_data) - 1, :] = test_predict
+    plt.plot(scaler.inverse_transform(scaled_data), label='Original Data')
+    plt.plot(train_plot, label='Training Predictions')
+    plt.plot(test_plot, label='Testing Predictions')
+    plt.xlabel('Time')
+    plt.ylabel('Halflife')
+    plt.legend()
+    plt.show()
+if __name__ == "__main__":
+    raw = pd.read_csv('./data/halflife_for_visual.tsv', sep='\t')
+    raw['right'] = raw['r_history'].str.count('1')
+    raw['wrong'] = raw['r_history'].str.count('0')
+    raw['right'] = raw['right'].map(lambda x: np.sqrt(x + 1))
+    raw['wrong'] = raw['wrong'].map(lambda x: np.sqrt(x + 1))
+    raw['log_halflife'] = raw['halflife'].map(lambda x: np.log(x))
+    raw.drop_duplicates(inplace=True)
+    raw = raw[raw['group_cnt'] > 1000]
+    fit_hlr_model(raw[(raw['last_recall'] == 0) | (raw['halflife_increase'] > 1) & (raw['last_recall'] == 1) & (
+            raw['r_history'].str.count('0') == 1)].copy())
+    fit_recall_halflife(
+        raw[(raw['halflife_increase'] > 1) & (raw['last_recall'] == 1) & (raw['r_history'].str.count('0') == 1)].copy())
+    fit_forget_halflife(raw[raw['last_recall'] == 0].copy())
+    lstm_model(raw)
